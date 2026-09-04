@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-main.py —— 内容搜索并打开工具（GUI 主程序）
+main.py —— 创可贴制作-内容搜索打开工具（GUI 主程序）
 
 功能：输入一段文字 -> 选择一个文件夹 -> 找出文件夹下“内容包含这段文字”的所有文件
       -> 用系统默认程序全部打开。
@@ -19,7 +19,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from searcher import search_folder
 
-APP_NAME = "内容搜索并打开工具"
+APP_NAME = "创可贴制作-内容搜索打开工具"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 

@@ -1,6 +1,6 @@
-# 内容搜索并打开工具
+# 创可贴制作-内容搜索打开工具
 
-一个简单的小工具：**输入一段文字 → 选择一个文件夹 → 自动找出该文件夹下所有“内容包含这段文字”的文件 → 用系统默认程序全部打开**。可打包为 Windows 单文件 `.exe`（无需安装 Python 即可运行），也可再生成安装程序。
+一个简单的小工具（创可贴制作版）：**输入一段文字 → 选择一个文件夹 → 自动找出该文件夹下所有“内容包含这段文字”的文件 → 用系统默认程序全部打开**。可打包为 Windows 单文件 `.exe`（无需安装 Python 即可运行），也可再生成安装程序。
 
 > 使用场景示例：把「1.现教处…申请动议.docx」「2.现教处…申请动议.docx」这类 Word 文档放在一个文件夹里，
 > 输入“党委会”或“6万元”，工具就能找出**内容里**包含这些文字的所有文件并把它们一起打开。
@@ -42,11 +42,11 @@
 
 1. 安装 Python：到 <https://www.python.org/downloads/> 下载安装，**安装时勾选 “Add Python to PATH”**（3.10 及以上即可）。
 2. 把本项目文件夹拷贝到该电脑，双击 **`build_exe.bat`**。
-3. 等待脚本执行完毕，产物在 **`dist\ContentSearchOpener.exe`**。
-4. 该 exe 是“单文件、免安装”程序：拷贝到任意 Windows 电脑双击即可使用；也可自行改名为 `内容搜索并打开工具.exe`。
+3. 等待脚本执行完毕，产物在 **`dist\创可贴制作-内容搜索打开工具.exe`**。
+4. 该 exe 是“单文件、免安装”程序：拷贝到任意 Windows 电脑双击即可使用；已直接命名为 `创可贴制作-内容搜索打开工具.exe`。
 
 > 需要“安装程序”（带桌面快捷方式、可卸载）时：再安装 [Inno Setup 6](https://jrsoftware.org/isdl.php)，
-> 双击打开 `build_installer.iss` → 菜单 Build → Compile，产物在 `Output\ContentSearchOpener_Setup.exe`。
+> 双击打开 `build_installer.iss` → 菜单 Build → Compile，产物在 `Output\创可贴制作-内容搜索打开工具_安装程序.exe`。
 
 ---
 
@@ -55,7 +55,7 @@
 把本项目推到 GitHub 后：
 
 1. 仓库页面 → **Actions** → 左侧 **Build Windows EXE** → **Run workflow**；
-2. 跑完后打开该次运行页面底部的 **Artifacts**，下载 `ContentSearchOpener-exe`（单文件 exe）或 `ContentSearchOpener-installer`（安装程序）。
+2. 跑完后打开该次运行页面底部的 **Artifacts**，下载 `创可贴制作-内容搜索打开工具-exe`（单文件 exe）或 `创可贴制作-内容搜索打开工具-installer`（安装程序）。
 
 ---
 
