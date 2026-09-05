@@ -342,7 +342,10 @@ def search_folder(
     stop_event: threading.Event，置位则停止。
     """
     keyword = (keyword or "").strip()
-    if not keyword:
+    # 支持多关键词：每行一个关键词，命中任意一行即算（空行忽略）
+    keywords = [ln.strip() for ln in keyword.splitlines()]
+    keywords = [k for k in keywords if k] or [keyword]
+    if not keywords:
         return []
     if not os.path.isdir(folder):
         return []
@@ -381,13 +384,17 @@ def search_folder(
             continue
 
         matched = False
-        if match_filename and keyword.casefold() in os.path.basename(path).casefold():
+        base_low = os.path.basename(path).casefold()
+        if match_filename and any(k.casefold() in base_low for k in keywords):
             matched = True
         if not matched:
-            try:
-                matched = file_matches(path, keyword, case_sensitive=case_sensitive)
-            except Exception:
-                matched = False
+            for k in keywords:
+                try:
+                    if file_matches(path, k, case_sensitive=case_sensitive):
+                        matched = True
+                        break
+                except Exception:
+                    continue
         if matched:
             hits.append(path)
 
