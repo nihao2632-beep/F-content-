@@ -294,7 +294,22 @@ def iter_files(root: str, recursive: bool = True, include_hidden: bool = False):
                 yield p
 
 
-def file_matches(path: str, keyword: str, case_sensitive: bool = True) -> bool:
+def _pdf_ocr_match(path: str, kw: str, stop_event=None) -> bool:
+    """扫描版（无文字层）PDF：渲染页面 OCR 后查找关键字。"""
+    try:
+        import ocr
+        if not ocr.ocr_available():
+            return False
+        text = ocr.pdf_ocr_text(path, stop_event=stop_event)
+        if text:
+            return _contains_in_text(_norm_kw(text, False), kw)
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def file_matches(path: str, keyword: str, case_sensitive: bool = True,
+                 ocr_pdf: bool = False, stop_event=None) -> bool:
     """判断单个文件内容是否包含关键字（先结构化抽取，再二进制兜底）。"""
     kw = _norm_kw(keyword, case_sensitive)
     if not kw:
@@ -306,6 +321,10 @@ def file_matches(path: str, keyword: str, case_sensitive: bool = True) -> bool:
         text = extract_text(path)
         if text is not None:
             if _contains_in_text(_norm_kw(text, case_sensitive), kw):
+                return True
+        # PDF：提取文字很少/为空 => 疑似扫描版，用 OCR 识别后再查
+        if ext == ".pdf" and ocr_pdf and (text is None or len(text.strip()) < 20):
+            if _pdf_ocr_match(path, kw, stop_event=stop_event):
                 return True
         # 结构化抽取失败/未命中 -> 继续二进制扫描兜底
         return raw_contains(path, keyword, case_sensitive)
@@ -330,6 +349,7 @@ def search_folder(
     extensions: str = "",
     max_file_size_mb: float = 0,
     match_filename: bool = False,
+    ocr_pdf: bool = False,
     on_progress=None,
     stop_event=None,
 ) -> list[str]:
@@ -338,6 +358,7 @@ def search_folder(
 
     extensions: 形如 ".docx,.txt,.pdf" 的空字符串表示不限制。
     match_filename: 同时把“文件名包含关键字”也算命中。
+    ocr_pdf: 对疑似扫描版（无文字层）PDF 用 OCR 识别后再搜索（较慢，结果会缓存）。
     on_progress: 回调 (当前文件数, 已命中数, 当前文件名)。
     stop_event: threading.Event，置位则停止。
     """
@@ -390,7 +411,8 @@ def search_folder(
         if not matched:
             for k in keywords:
                 try:
-                    if file_matches(path, k, case_sensitive=case_sensitive):
+                    if file_matches(path, k, case_sensitive=case_sensitive,
+                                    ocr_pdf=ocr_pdf, stop_event=stop_event):
                         matched = True
                         break
                 except Exception:

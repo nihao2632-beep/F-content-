@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from searcher import search_folder
 
 APP_NAME = "创可贴制作-内容搜索打开工具"
+APP_VERSION = "1.01"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -98,7 +99,7 @@ class App:
         self.result_items: list[str] = []
         self._status_job: str | None = None
 
-        root.title(APP_NAME)
+        root.title(f"{APP_NAME} V{APP_VERSION}")
         root.geometry("860x640")
         root.minsize(720, 540)
         try:
@@ -144,10 +145,12 @@ class App:
         self.var_ci = tk.BooleanVar(value=True)
         self.var_filename = tk.BooleanVar(value=False)
         self.var_hidden = tk.BooleanVar(value=False)
+        self.var_ocr = tk.BooleanVar(value=True)
         ttk.Checkbutton(f3, text="包含子文件夹", variable=self.var_recursive).grid(row=0, column=0, sticky="w", padx=(0, 18))
         ttk.Checkbutton(f3, text="忽略大小写（英文）", variable=self.var_ci).grid(row=0, column=1, sticky="w", padx=(0, 18))
         ttk.Checkbutton(f3, text="文件名包含也算命中", variable=self.var_filename).grid(row=0, column=2, sticky="w", padx=(0, 18))
         ttk.Checkbutton(f3, text="包含隐藏文件/目录", variable=self.var_hidden).grid(row=0, column=3, sticky="w")
+        ttk.Checkbutton(f3, text="扫描版PDF用OCR识别（无文字层也能搜，较慢）", variable=self.var_ocr).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Label(f3, text="只搜索类型(空=全部, 如 .docx,.txt,.pdf)：").grid(row=1, column=0, sticky="e", pady=(6, 0))
         self.var_ext = tk.StringVar(value="")
         ttk.Entry(f3, textvariable=self.var_ext, width=28).grid(row=1, column=1, columnspan=2, sticky="w", pady=(6, 0))
@@ -198,7 +201,8 @@ class App:
         if self.cfg.get("keyword"):
             self.txt_keyword.insert("1.0", self.cfg["keyword"])
         for var, key in ((self.var_recursive, "recursive"), (self.var_ci, "ci"),
-                         (self.var_filename, "filename"), (self.var_hidden, "hidden")):
+                         (self.var_filename, "filename"), (self.var_hidden, "hidden"),
+                         (self.var_ocr, "ocr_pdf")):
             if key in self.cfg:
                 var.set(bool(self.cfg[key]))
         if self.cfg.get("ext"):
@@ -214,6 +218,7 @@ class App:
             "ci": bool(self.var_ci.get()),
             "filename": bool(self.var_filename.get()),
             "hidden": bool(self.var_hidden.get()),
+            "ocr_pdf": bool(self.var_ocr.get()),
             "ext": self.var_ext.get().strip(),
             "maxmb": self.var_maxmb.get().strip(),
         })
@@ -257,6 +262,7 @@ class App:
             "extensions": self.var_ext.get().strip(),
             "max_file_size_mb": maxmb,
             "match_filename": bool(self.var_filename.get()),
+            "ocr_pdf": bool(self.var_ocr.get()),
         }
 
     def _start_search(self, open_after: bool):
@@ -303,6 +309,7 @@ class App:
                 extensions=opts["extensions"],
                 max_file_size_mb=opts["max_file_size_mb"],
                 match_filename=opts["match_filename"],
+                ocr_pdf=opts.get("ocr_pdf", False),
                 on_progress=progress,
                 stop_event=self.stop_event,
             )
@@ -415,6 +422,7 @@ def run_cli(argv: list[str]) -> int:
     ap.add_argument("--no-recursive", action="store_true")
     ap.add_argument("--case-sensitive", action="store_true")
     ap.add_argument("--filename", action="store_true", help="文件名包含也算命中")
+    ap.add_argument("--no-ocr", action="store_true", help="不识别扫描版PDF")
     ap.add_argument("--extensions", default="")
     ap.add_argument("--max-size-mb", type=float, default=200.0)
     ap.add_argument("--open", action="store_true", help="搜索后打开全部命中文件")
@@ -429,6 +437,7 @@ def run_cli(argv: list[str]) -> int:
         extensions=args.extensions,
         max_file_size_mb=args.max_size_mb,
         match_filename=args.filename,
+        ocr_pdf=not args.no_ocr,
     )
     for h in hits:
         print(h)
