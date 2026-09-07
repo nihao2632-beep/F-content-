@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from searcher import search_folder
 
 APP_NAME = "创可贴制作-内容搜索打开工具"
-APP_VERSION = "1.01"
+APP_VERSION = "1.02"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -142,7 +142,7 @@ class App:
         f3 = ttk.LabelFrame(outer, text=" ③ 搜索选项 ", padding=6)
         f3.pack(fill="x", **pad)
         self.var_recursive = tk.BooleanVar(value=True)
-        self.var_ci = tk.BooleanVar(value=True)
+        self.var_ci = tk.BooleanVar(value=False)
         self.var_filename = tk.BooleanVar(value=False)
         self.var_hidden = tk.BooleanVar(value=False)
         self.var_ocr = tk.BooleanVar(value=True)
@@ -198,8 +198,6 @@ class App:
     def _load_ui_state(self):
         if self.cfg.get("dir"):
             self.var_dir.set(self.cfg["dir"])
-        if self.cfg.get("keyword"):
-            self.txt_keyword.insert("1.0", self.cfg["keyword"])
         for var, key in ((self.var_recursive, "recursive"), (self.var_ci, "ci"),
                          (self.var_filename, "filename"), (self.var_hidden, "hidden"),
                          (self.var_ocr, "ocr_pdf")):
@@ -213,7 +211,6 @@ class App:
     def _save_state(self):
         self.cfg.update({
             "dir": self.var_dir.get().strip(),
-            "keyword": self.txt_keyword.get("1.0", "end").strip(),
             "recursive": bool(self.var_recursive.get()),
             "ci": bool(self.var_ci.get()),
             "filename": bool(self.var_filename.get()),
@@ -255,7 +252,6 @@ class App:
             maxmb = 0.0
         return {
             "folder": folder,
-            "keyword": self.txt_keyword.get("1.0", "end").strip(),
             "recursive": bool(self.var_recursive.get()),
             "case_sensitive": not bool(self.var_ci.get()),
             "include_hidden": bool(self.var_hidden.get()),
