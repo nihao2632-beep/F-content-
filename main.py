@@ -267,6 +267,21 @@ class App:
         }
 
     def _start_search(self, open_after: bool):
+        """搜索入口：任何异常都弹窗提示，避免“点了没反应”。"""
+        try:
+            self._run_search(open_after)
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            self.btn_search_open.config(state="normal")
+            self.btn_search.config(state="normal")
+            self.btn_stop.config(state="disabled")
+            self.status.set("搜索出错。")
+            messagebox.showerror(
+                APP_NAME,
+                f"发生错误，未能开始搜索：\n{e}\n\n请把上面这段提示反馈给软件提供方。")
+
+    def _run_search(self, open_after: bool):
         if self.search_thread and self.search_thread.is_alive():
             messagebox.showinfo(APP_NAME, "搜索正在进行中，请先停止或等待完成。")
             return
