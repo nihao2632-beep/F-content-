@@ -85,7 +85,8 @@ def _raw_find_in_chunk(chunk: bytes, needles: list[bytes], case_sensitive: bool)
 
 def raw_contains(path: str, kw: str, case_sensitive: bool = True) -> bool:
     """对任意文件做分块二进制扫描：文件字节里是否包含关键字（UTF-8/GB18030/UTF-16LE）。"""
-    needles = _needle_bytes(kw)
+    # 忽略大小写时，关键词也统一转小写，与文件内容的小写化保持一致
+    needles = _needle_bytes(kw if case_sensitive else kw.lower())
     if not needles:
         return False
     try:
