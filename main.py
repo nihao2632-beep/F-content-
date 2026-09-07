@@ -47,6 +47,10 @@ def open_file(path: str) -> bool:
         return False
 
 
+def _has_ascii_letter(text: str) -> bool:
+    return any(ch.isascii() and ch.isalpha() for ch in text)
+
+
 def open_paths(paths: list[str]) -> tuple[int, int]:
     ok = 0
     for p in paths:
@@ -252,6 +256,7 @@ class App:
             maxmb = 0.0
         return {
             "folder": folder,
+            "keyword": self.txt_keyword.get("1.0", "end").strip(),
             "recursive": bool(self.var_recursive.get()),
             "case_sensitive": not bool(self.var_ci.get()),
             "include_hidden": bool(self.var_hidden.get()),
@@ -294,13 +299,12 @@ class App:
                 last[0], last[1], last[2] = count, hits, path
                 q.put(("progress", count, hits, path))
 
-        stopped = False
-        try:
-            hits = search_folder(
+        def do_search(case_sensitive):
+            return search_folder(
                 folder=opts["folder"],
                 keyword=opts["keyword"],
                 recursive=opts["recursive"],
-                case_sensitive=opts["case_sensitive"],
+                case_sensitive=case_sensitive,
                 include_hidden=opts["include_hidden"],
                 extensions=opts["extensions"],
                 max_file_size_mb=opts["max_file_size_mb"],
@@ -309,12 +313,23 @@ class App:
                 on_progress=progress,
                 stop_event=self.stop_event,
             )
+
+        stopped = False
+        fallback = False
+        try:
+            hits = do_search(opts["case_sensitive"])
             stopped = self.stop_event.is_set()
+            # 智能兜底：勾选了区分大小写却一个都没搜到时，自动改为忽略大小写再搜一次
+            if not hits and not stopped and opts["case_sensitive"] \
+                    and _has_ascii_letter(opts["keyword"]):
+                hits2 = do_search(False)
+                if hits2:
+                    hits, fallback = hits2, True
         except Exception as e:  # noqa
             q.put(("error", str(e)))
             return
         # 用户手动停止时不再自动打开已找到的部分文件
-        q.put(("done", hits, open_after and not stopped, stopped))
+        q.put(("done", hits, open_after and not stopped, stopped, fallback))
 
     def _pump(self, q: queue.Queue, open_after: bool):
         stopped = False
@@ -325,8 +340,8 @@ class App:
                     _, count, hits, path = msg
                     self.status.set(f"已扫描 {count} 个文件，命中 {hits} 个… 正在检查：{os.path.basename(path)}")
                 elif msg[0] == "done":
-                    _, hits, _open, _stopped = msg
-                    self._finish_search(hits, _open, _stopped)
+                    _, hits, _open, _stopped, _fallback = msg
+                    self._finish_search(hits, _open, _stopped, _fallback)
                     stopped = True
                     break
                 elif msg[0] == "error":
@@ -341,7 +356,8 @@ class App:
                 self.status.set("已停止。")
             self.root.after(100, lambda: self._pump(q, open_after))
 
-    def _finish_search(self, hits: list[str], open_after: bool, stopped: bool = False):
+    def _finish_search(self, hits: list[str], open_after: bool, stopped: bool = False,
+                       fallback: bool = False):
         self.btn_search_open.config(state="normal")
         self.btn_search.config(state="normal")
         self.btn_stop.config(state="disabled")
@@ -356,11 +372,16 @@ class App:
             self.status.set("搜索完成：没有找到包含该内容的文件。")
             messagebox.showinfo(APP_NAME, "没有找到内容包含该文字的文件。")
             return
-        self.status.set(f"搜索完成：共命中 {len(hits)} 个文件。")
+        if fallback:
+            self.status.set(f"未找到区分大小写的精确匹配，已自动改用忽略大小写：共命中 {len(hits)} 个文件。")
+        else:
+            self.status.set(f"搜索完成：共命中 {len(hits)} 个文件。")
         if open_after:
+            head = "未找到区分大小写的精确匹配，已自动按忽略大小写搜索。" if fallback else ""
             if messagebox.askyesno(
                     APP_NAME,
-                    f"共找到 {len(hits)} 个文件：\n\n"
+                    (head + "\n\n" if head else "")
+                    + f"共找到 {len(hits)} 个文件：\n\n"
                     + "\n".join(os.path.basename(p) for p in hits[:15])
                     + ("\n…" if len(hits) > 15 else "")
                     + f"\n\n是否用系统默认程序全部打开这 {len(hits)} 个文件？"):
@@ -424,19 +445,29 @@ def run_cli(argv: list[str]) -> int:
     ap.add_argument("--open", action="store_true", help="搜索后打开全部命中文件")
     args = ap.parse_args(argv)
 
-    hits = search_folder(
-        folder=args.dir,
-        keyword=args.text,
-        recursive=not args.no_recursive,
-        case_sensitive=args.case_sensitive,
-        include_hidden=False,
-        extensions=args.extensions,
-        max_file_size_mb=args.max_size_mb,
-        match_filename=args.filename,
-        ocr_pdf=not args.no_ocr,
-    )
+    def _run(case_sensitive):
+        return search_folder(
+            folder=args.dir,
+            keyword=args.text,
+            recursive=not args.no_recursive,
+            case_sensitive=case_sensitive,
+            include_hidden=False,
+            extensions=args.extensions,
+            max_file_size_mb=args.max_size_mb,
+            match_filename=args.filename,
+            ocr_pdf=not args.no_ocr,
+        )
+
+    hits = _run(args.case_sensitive)
+    fallback = False
+    if not hits and args.case_sensitive and _has_ascii_letter(args.text):
+        hits2 = _run(False)
+        if hits2:
+            hits, fallback = hits2, True
     for h in hits:
         print(h)
+    if fallback:
+        print("\n[提示] 未找到区分大小写的精确匹配，已自动按忽略大小写搜索。")
     print(f"\n共命中 {len(hits)} 个文件")
     if args.open and hits:
         ok, total = open_paths(hits)
