@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from searcher import search_folder, search_folder_parallel
 
 APP_NAME = "创可贴制作-内容搜索打开工具"
-APP_VERSION = "1.04"
+APP_VERSION = "1.05"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -45,10 +45,6 @@ def open_file(path: str) -> bool:
         return True
     except Exception:
         return False
-
-
-def _has_ascii_letter(text: str) -> bool:
-    return any(ch.isascii() and ch.isalpha() for ch in text)
 
 
 def open_paths(paths: list[str]) -> tuple[int, int]:
@@ -336,21 +332,15 @@ class App:
             )
 
         stopped = False
-        fallback = False
         try:
+            # 严格按用户勾选执行：未勾“忽略大小写”= 大写只匹配大写
             hits = do_search(opts["case_sensitive"])
             stopped = self.stop_event.is_set()
-            # 智能兜底：勾选了区分大小写却一个都没搜到时，自动改为忽略大小写再搜一次
-            if not hits and not stopped and opts["case_sensitive"] \
-                    and _has_ascii_letter(opts["keyword"]):
-                hits2 = do_search(False)
-                if hits2:
-                    hits, fallback = hits2, True
         except Exception as e:  # noqa
             q.put(("error", str(e)))
             return
         # 用户手动停止时不再自动打开已找到的部分文件
-        q.put(("done", hits, open_after and not stopped, stopped, fallback))
+        q.put(("done", hits, open_after and not stopped, stopped, False))
 
     def _pump(self, q: queue.Queue, open_after: bool):
         stopped = False
@@ -483,15 +473,8 @@ def run_cli(argv: list[str]) -> int:
         )
 
     hits = _run(args.case_sensitive)
-    fallback = False
-    if not hits and args.case_sensitive and _has_ascii_letter(args.text):
-        hits2 = _run(False)
-        if hits2:
-            hits, fallback = hits2, True
     for h in hits:
         print(h)
-    if fallback:
-        print("\n[提示] 未找到区分大小写的精确匹配，已自动按忽略大小写搜索。")
     print(f"\n共命中 {len(hits)} 个文件")
     if args.open and hits:
         ok, total = open_paths(hits)
