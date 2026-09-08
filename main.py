@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from searcher import search_folder, search_folder_parallel
 
 APP_NAME = "创可贴制作-内容搜索打开工具"
-APP_VERSION = "1.05"
+APP_VERSION = "1.06"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -196,28 +196,14 @@ class App:
     # ---------------- 状态持久化 ----------------
 
     def _load_ui_state(self):
+        # 只回填“上次文件夹”；各类勾选项一律使用默认值，避免旧状态影响结果
         if self.cfg.get("dir"):
             self.var_dir.set(self.cfg["dir"])
-        for var, key in ((self.var_recursive, "recursive"), (self.var_ci, "ci"),
-                         (self.var_filename, "filename"), (self.var_hidden, "hidden"),
-                         (self.var_ocr, "ocr_pdf")):
-            if key in self.cfg:
-                var.set(bool(self.cfg[key]))
-        if self.cfg.get("ext"):
-            self.var_ext.set(self.cfg["ext"])
-        if self.cfg.get("maxmb"):
-            self.var_maxmb.set(str(self.cfg["maxmb"]))
 
     def _save_state(self):
+        # 只记忆“上次文件夹”，不保存勾选项（每次启动都恢复默认，行为可预期）
         self.cfg.update({
             "dir": self.var_dir.get().strip(),
-            "recursive": bool(self.var_recursive.get()),
-            "ci": bool(self.var_ci.get()),
-            "filename": bool(self.var_filename.get()),
-            "hidden": bool(self.var_hidden.get()),
-            "ocr_pdf": bool(self.var_ocr.get()),
-            "ext": self.var_ext.get().strip(),
-            "maxmb": self.var_maxmb.get().strip(),
         })
         save_config(self.cfg)
 
