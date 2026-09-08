@@ -17,10 +17,10 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from searcher import search_folder
+from searcher import search_folder, search_folder_parallel
 
 APP_NAME = "创可贴制作-内容搜索打开工具"
-APP_VERSION = "1.02"
+APP_VERSION = "1.04"
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -314,8 +314,12 @@ class App:
                 last[0], last[1], last[2] = count, hits, path
                 q.put(("progress", count, hits, path))
 
+        def on_hit(path):
+            # 命中一个就立即推给界面，实现“结果陆续显示”
+            q.put(("hit", path))
+
         def do_search(case_sensitive):
-            return search_folder(
+            return search_folder_parallel(
                 folder=opts["folder"],
                 keyword=opts["keyword"],
                 recursive=opts["recursive"],
@@ -325,7 +329,9 @@ class App:
                 max_file_size_mb=opts["max_file_size_mb"],
                 match_filename=opts["match_filename"],
                 ocr_pdf=opts.get("ocr_pdf", False),
+                workers=opts.get("workers", 4),
                 on_progress=progress,
+                on_hit=on_hit,
                 stop_event=self.stop_event,
             )
 
@@ -354,6 +360,11 @@ class App:
                 if msg[0] == "progress":
                     _, count, hits, path = msg
                     self.status.set(f"已扫描 {count} 个文件，命中 {hits} 个… 正在检查：{os.path.basename(path)}")
+                elif msg[0] == "hit":
+                    _, path = msg
+                    self.result_paths.append(path)
+                    self.tree.insert("", "end", values=(os.path.basename(path), path))
+                    self.status.set(f"已找到 {len(self.result_paths)} 个文件，搜索中…")
                 elif msg[0] == "done":
                     _, hits, _open, _stopped, _fallback = msg
                     self._finish_search(hits, _open, _stopped, _fallback)
@@ -377,9 +388,7 @@ class App:
         self.btn_search.config(state="normal")
         self.btn_stop.config(state="disabled")
         self.search_thread = None
-        self.result_paths = hits
-        for p in hits:
-            self.tree.insert("", "end", values=(os.path.basename(p), p))
+        self.result_paths = hits if hits is not None else self.result_paths
         if stopped:
             self.status.set(f"已停止：已扫描到 {len(hits)} 个命中文件（未自动打开）。")
             return

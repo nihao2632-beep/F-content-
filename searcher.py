@@ -341,6 +341,68 @@ def file_matches(path: str, keyword: str, case_sensitive: bool = True,
     return raw_contains(path, keyword, case_sensitive)
 
 
+def _split_keywords(keyword: str) -> list[str]:
+    """支持多关键词：每行一个关键词，命中任意一行即算（空行忽略）。"""
+    keyword = (keyword or "").strip()
+    kws = [ln.strip() for ln in keyword.splitlines()]
+    return [k for k in kws if k] or ([keyword] if keyword else [])
+
+
+def _match_candidate(path: str, keywords: list[str], case_sensitive: bool,
+                     match_filename: bool, ocr_pdf: bool, stop_event) -> bool:
+    matched = False
+    base_low = os.path.basename(path).casefold()
+    if match_filename and any(k.casefold() in base_low for k in keywords):
+        matched = True
+    if not matched:
+        for k in keywords:
+            try:
+                if file_matches(path, k, case_sensitive=case_sensitive,
+                                ocr_pdf=ocr_pdf, stop_event=stop_event):
+                    matched = True
+                    break
+            except Exception:
+                continue
+    return matched
+
+
+def _iter_candidates(folder, recursive, include_hidden, allowed, max_bytes, stop_event):
+    """遍历目录，过滤掉超大/无关类型/非普通文件，产出待搜索的文件路径。"""
+    for path in iter_files(folder, recursive=recursive, include_hidden=include_hidden):
+        if stop_event is not None and stop_event.is_set():
+            break
+        try:
+            if not os.path.isfile(path):
+                continue
+            if os.path.islink(path):
+                continue
+            size = os.path.getsize(path)
+            if max_bytes > 0 and size > max_bytes:
+                continue
+            ext = os.path.splitext(path)[1].lower()
+            if allowed is not None and ext not in allowed:
+                continue
+        except OSError:
+            continue
+        yield path
+
+
+def _search_args(folder, keyword, extensions, max_file_size_mb):
+    keywords = _split_keywords(keyword)
+    if not keywords or not os.path.isdir(folder):
+        return None, None, None
+    allowed = None
+    if extensions and extensions.strip():
+        allowed = {e.strip().lower() if e.strip().startswith(".") else "." + e.strip().lower()
+                   for e in extensions.split(",") if e.strip()}
+    max_bytes = 0.0
+    try:
+        max_bytes = float(max_file_size_mb) * 1024 * 1024
+    except (TypeError, ValueError):
+        max_bytes = 0.0
+    return keywords, allowed, max_bytes
+
+
 def search_folder(
     folder: str,
     keyword: str,
@@ -355,7 +417,7 @@ def search_folder(
     stop_event=None,
 ) -> list[str]:
     """
-    搜索文件夹，返回内容包含关键字的文件绝对路径列表（按路径排序）。
+    单线程搜索文件夹，返回内容包含关键字的文件绝对路径列表（按路径排序）。
 
     extensions: 形如 ".docx,.txt,.pdf" 的空字符串表示不限制。
     match_filename: 同时把“文件名包含关键字”也算命中。
@@ -363,65 +425,87 @@ def search_folder(
     on_progress: 回调 (当前文件数, 已命中数, 当前文件名)。
     stop_event: threading.Event，置位则停止。
     """
-    keyword = (keyword or "").strip()
-    # 支持多关键词：每行一个关键词，命中任意一行即算（空行忽略）
-    keywords = [ln.strip() for ln in keyword.splitlines()]
-    keywords = [k for k in keywords if k] or [keyword]
-    if not keywords:
+    keywords, allowed, max_bytes = _search_args(folder, keyword, extensions, max_file_size_mb)
+    if keywords is None:
         return []
-    if not os.path.isdir(folder):
-        return []
-
-    allowed: set[str] | None = None
-    if extensions and extensions.strip():
-        allowed = {e.strip().lower() if e.strip().startswith(".") else "." + e.strip().lower()
-                   for e in extensions.split(",") if e.strip()}
-
-    max_bytes = 0.0
-    try:
-        max_bytes = float(max_file_size_mb) * 1024 * 1024
-    except (TypeError, ValueError):
-        max_bytes = 0.0
 
     hits: list[str] = []
     count = 0
-    for path in iter_files(folder, recursive=recursive, include_hidden=include_hidden):
-        if stop_event is not None and stop_event.is_set():
-            break
+    for path in _iter_candidates(folder, recursive, include_hidden, allowed, max_bytes, stop_event):
         count += 1
         if on_progress:
             on_progress(count, len(hits), path)
-        try:
-            if not os.path.isfile(path):
-                continue
-            if os.path.islink(path):
-                continue
-            size = os.path.getsize(path)
-            if max_bytes > 0 and size > max_bytes:
-                continue
-            ext = os.path.splitext(path)[1].lower()
-            if allowed is not None and ext not in allowed:
-                continue
-        except OSError:
-            continue
-
-        matched = False
-        base_low = os.path.basename(path).casefold()
-        if match_filename and any(k.casefold() in base_low for k in keywords):
-            matched = True
-        if not matched:
-            for k in keywords:
-                try:
-                    if file_matches(path, k, case_sensitive=case_sensitive,
-                                    ocr_pdf=ocr_pdf, stop_event=stop_event):
-                        matched = True
-                        break
-                except Exception:
-                    continue
-        if matched:
+        if _match_candidate(path, keywords, case_sensitive, match_filename, ocr_pdf, stop_event):
             hits.append(path)
-
     hits.sort(key=lambda p: p.casefold())
+    return hits
+
+
+def search_folder_parallel(
+    folder: str,
+    keyword: str,
+    recursive: bool = True,
+    case_sensitive: bool = False,
+    include_hidden: bool = False,
+    extensions: str = "",
+    max_file_size_mb: float = 0,
+    match_filename: bool = False,
+    ocr_pdf: bool = False,
+    workers: int = 4,
+    on_progress=None,
+    on_hit=None,
+    stop_event=None,
+) -> list[str]:
+    """
+    多线程并行搜索（程序多线程、更快）。
+
+    与 search_folder 的语义一致，区别：
+      * 用多个工作线程并行扫描文件；
+      * on_hit(path)：每命中一个文件就立即回调一次，供界面“陆续显示结果”；
+      * on_progress(count, hits, path)：每处理完一个文件回调一次（在同一收集线程内执行）。
+    返回值按“命中顺序”排列（与回调顺序一致，未排序）。
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    keywords, allowed, max_bytes = _search_args(folder, keyword, extensions, max_file_size_mb)
+    if keywords is None:
+        return []
+
+    candidates = list(_iter_candidates(folder, recursive, include_hidden, allowed,
+                                       max_bytes, stop_event))
+    if not candidates:
+        return []
+
+    hits: list[str] = []
+    processed = 0
+
+    def task(path):
+        if stop_event is not None and stop_event.is_set():
+            return None
+        try:
+            return path if _match_candidate(
+                path, keywords, case_sensitive, match_filename, ocr_pdf, stop_event) else None
+        except Exception:
+            return None
+
+    workers = max(1, min(int(workers or 4), 32))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(task, p) for p in candidates]
+        try:
+            for fut in as_completed(futures):
+                if stop_event is not None and stop_event.is_set():
+                    break
+                processed += 1
+                path = fut.result()
+                if path:
+                    hits.append(path)
+                    if on_hit:
+                        on_hit(path)
+                if on_progress:
+                    on_progress(processed, len(hits), path or "")
+        finally:
+            # 停止时：取消尚未开始的任务，并等待正在运行的任务结束（OCR 内会检查停止标记）
+            pool.shutdown(wait=True, cancel_futures=True)
     return hits
 
 

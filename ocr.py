@@ -19,6 +19,7 @@ OCR_DPI = 200          # 渲染分辨率（越高越清晰、越慢）
 
 _engine = None
 _engine_lock = threading.Lock()
+_ocr_run_lock = threading.Lock()   # 多线程并行搜索时，OCR 引擎调用串行化，保证稳定
 _import_error: str | None = None
 
 
@@ -98,7 +99,8 @@ def pdf_ocr_text(path: str, max_pages: int = OCR_MAX_PAGES,
             try:
                 page = pdf[i]
                 img = page.render(scale=dpi / 72.0).to_pil()
-                result, _ = engine(np.array(img.convert("RGB")))
+                with _ocr_run_lock:
+                    result, _ = engine(np.array(img.convert("RGB")))
                 if result:
                     parts.append("\n".join(str(line[1]) for line in result))
             except Exception:  # noqa: BLE001  单页失败跳过，不中断整个文件
